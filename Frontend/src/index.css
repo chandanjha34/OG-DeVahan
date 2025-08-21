@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #0f172a;
+  --color-primary-light: #1e293b;
+  --color-gold: #ffd700;
+  --color-gold-light: #ffec99;
+  --color-neon-blue: #00bfff;
+  --color-neon-green: #39ff14;
+  --color-metallic: #a1a1aa;
+  --color-warning: #ff4500;
+  --color-warning-orange: #ff7e00;
+  --color-success: #10b981;
+}
+
+@layer base {
+  body {
+    @apply bg-primary text-white;
+  }
+}
+
+@layer components {
+  .bg-primary {
+    background-color: var(--color-primary);
+  }
+  
+  .bg-primary-light {
+    background-color: var(--color-primary-light);
+  }
+  
+  .text-gold {
+    color: var(--color-gold);
+  }
+
+  .bg-gold {
+    background-color: var(--color-gold);
+  }
+
+  .border-gold {
+    border-color: var(--color-gold);
+  }
+
+  .from-gold {
+    --tw-gradient-from: var(--color-gold);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(255, 215, 0, 0));
+  }
+
+  .to-gold-light {
+    --tw-gradient-to: var(--color-gold-light);
+  }
+
+  .bg-neon-blue {
+    background-color: var(--color-neon-blue);
+  }
+
+  .from-neon-blue {
+    --tw-gradient-from: var(--color-neon-blue);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(0, 191, 255, 0));
+  }
+
+  .to-neon-green {
+    --tw-gradient-to: var(--color-neon-green);
+  }
+
+  .text-metallic {
+    color: var(--color-metallic);
+  }
+
+  .border-metallic {
+    border-color: var(--color-metallic);
+  }
+
+  .from-warning {
+    --tw-gradient-from: var(--color-warning);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(255, 69, 0, 0));
+  }
+
+  .to-warning-orange {
+    --tw-gradient-to: var(--color-warning-orange);
+  }
+
+  .bg-success {
+    background-color: var(--color-success);
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bg-gradient-radial {
+  background-image: radial-gradient(circle at center, var(--tw-gradient-stops));
+}
