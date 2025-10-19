@@ -1,5 +1,5 @@
 import React from 'react';
-import { Car, Plus, Train as Transfer, History, Settings, Zap, Wallet2, Shield, User, Building2 } from 'lucide-react';
+import { Car, Plus, Train as Transfer, History, Settings, Zap, Wallet2, Shield, User, Building2, Wrench } from 'lucide-react';
 import NavLink from './Navlink';
 import { useLanguage } from '../context/LanguageContext';
 import type { RootState } from '../Redux/store'
@@ -7,7 +7,7 @@ import { useSelector } from 'react-redux';
 
 interface NavbarProps {
   isAuthenticated: boolean;
-  currentUser: { name: string; type: 'user' | 'dealer' } | null;
+  currentUser: { name: string; type: 'user' | 'dealer' | 'service'} | null;
   onSignOut: () => void;
   setCurrentPage: React.Dispatch<React.SetStateAction<string>>;
   setShowAuthModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -57,7 +57,13 @@ function Navbar({
                   <NavLink icon={<Transfer />} text={t('nav.transfer')} />
                 </div>
               )}
-              {isAuthenticated && (
+              {isAuthenticated && currentUser?.type === 'service' && (
+                <div onClick={() => setCurrentPage('add-service')} className="cursor-pointer">
+                  <NavLink icon={<Wrench />} text="Add Service" />
+                </div>
+              )}
+
+              {isAuthenticated && currentUser?.type === 'user' && (
                 <div onClick={() => setCurrentPage('service-records')} className="cursor-pointer">
                   <NavLink icon={<Settings />} text="Service Records" />
                 </div>

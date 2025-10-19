@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import fileUpload from "express-fileupload";
 import authRoutes from "./routes/authRoutes";
+import bodyParser from "body-parser";
 import connectDB from "./config/db";
 import { uploadFileBuffer, uploadJSON , fetchJSON} from "./utils/zeroGStorage";
 
@@ -16,16 +17,129 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(cors({ origin: '*', credentials: true }));
+
 app.use(express.json());
 app.use(fileUpload());
 
+import { ethers } from 'ethers';
+import { createZGComputeNetworkBroker } from '@0glabs/0g-serving-broker';
+import addServicesRoutes from "./routes/addServicesRoutes";
+
+
+app.use(bodyParser.json());
+
+/**
+ * Initialize 0G Compute Broker
+ * Choose network based on environment
+ */
+const RPC_URL =
+  process.env.NODE_ENV === 'production'
+    ? 'https://evmrpc.0g.ai' // Mainnet
+    : 'https://evmrpc-testnet.0g.ai'; // Testnet
+
+const provider = new ethers.JsonRpcProvider(RPC_URL);
+const wallet = new ethers.Wallet(process.env.PRIVATE_KEY!, provider);
+
+let broker: any;
+
+(async () => {
+  broker = await createZGComputeNetworkBroker(wallet);
+  console.log("✅ 0G Compute Broker initialized");
+
+  // Check if account exists or needs funding
+  try {
+    const account = await broker.ledger.getLedger();
+    console.log(`💰 Existing account balance: ${ethers.formatEther(account.totalBalance)} OG`);
+  } catch {
+    console.log("⚙️ No account found. Creating and funding one...");
+    // This creates + funds the account automatically
+    await broker.ledger.addLedger(4.4);
+    console.log("✅ Account created & funded with 10 OG tokens");
+  }
+})();
+
+/* ----------------------------- API ROUTE ----------------------------- */
+app.post("/api/ask0GCompute", async (req, res) => {
+  try {
+    const { tokenID, query, serviceRecord } = req.body;
+    if (!tokenID || !query || !serviceRecord) {
+      return res.status(400).json({ error: "Missing parameters" });
+    }
+
+    // Step 1: Discover available AI services
+    const services = await broker.inference.listService();
+    const selectedService =
+      services.find((s: any) => s.model === "deepseek-r1-70b") || services[0];
+
+    if (!selectedService) throw new Error("No available 0G Compute services.");
+
+    const providerAddress = selectedService.provider;
+
+    // Step 2: Acknowledge provider (required)
+    await broker.inference.acknowledgeProviderSigner(providerAddress);
+    console.log(`✅ Acknowledged provider: ${providerAddress}`);
+
+    // Step 3: Get service metadata
+    const { endpoint, model } = await broker.inference.getServiceMetadata(providerAddress);
+
+    // Step 4: Prepare messages
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are a helpful car service assistant. Use the given vehicle service record to answer queries and provide recommendations. And give answers always in less than 4 lines",
+      },
+      {
+        role: "user",
+        content: `Vehicle TokenID: ${tokenID}\n\nService Record:\n${serviceRecord}\n\nQuestion: ${query}`,
+      },
+    ];
+
+    // Step 5: Generate single-use auth headers
+    const headers = await broker.inference.getRequestHeaders(
+      providerAddress,
+      JSON.stringify(messages)
+    );
+
+    // Step 6: Send request to 0G model
+    const response = await fetch(`${endpoint}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({
+        messages,
+        model,
+      }),
+    });
+
+    const data = await response.json();
+    const answer = data?.choices?.[0]?.message?.content || "⚠️ No valid response.";
+    const chatID = data?.id;
+
+    // Step 7: Verify response if TEE verified
+    const isValid = await broker.inference.processResponse(providerAddress, answer, chatID);
+
+    return res.json({
+      reply: answer,
+      verified: isValid,
+      provider: providerAddress,
+      model,
+    });
+  } catch (error: any) {
+    console.error("❌ 0G Compute error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // Auth routes
 app.use("/auth", authRoutes);
+app.use("/addService", addServicesRoutes);
 
 // ---------------------------
 // 0G Storage routes
 // ---------------------------
+
+
 
 // Upload a single file
 app.post("/api/uploadFile", async (req, res) => {
@@ -69,6 +183,7 @@ app.post("/api/uploadJSON", async (req, res) => {
 app.get("/api/fetchJSON/:rootHash", async (req, res) => {
   try {
     const { rootHash } = req.params;
+      console.log("Fetching JSON for rootHash:", rootHash);
     if (!rootHash) return res.status(400).json({ success: false, error: "rootHash is required" });
     const data = await fetchJSON(rootHash);
     return res.json({ success: true, data });

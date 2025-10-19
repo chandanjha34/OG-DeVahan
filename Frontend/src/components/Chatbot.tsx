@@ -161,28 +161,28 @@ const VahanSaarthi: React.FC = () => {
 
   const handleTokenSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const car = demoCars[tokenId.toUpperCase()];
+    const car = 'fsfs';
     if (car) {
       setActiveCar(car);
-      setMessages((prev) => [
-        ...prev,
-        { 
-          id: generateId(), 
-          text: `✅ **Vehicle found in database!** 
+//       setMessages((prev) => [
+//         ...prev,
+//         { 
+//           id: generateId(), 
+//           text: `✅ **Vehicle found in database!** 
           
-**Token ID**: ${tokenId.toUpperCase()}
-**Model**: ${car.model}
-**Owner**: ${car.owner}
-**Year**: ${car.year}
-**Mileage**: ${car.mileage}
-**Insurance**: ${car.insurance}
+// **Token ID**: ${tokenId.toUpperCase()}
+// **Model**: ${car.model}
+// **Owner**: ${car.owner}
+// **Year**: ${car.year}
+// **Mileage**: ${car.mileage}
+// **Insurance**: ${car.insurance}
 
-You can now ask me specific questions about this vehicle!`, 
-          isUser: false,
-          status: 'success',
-          timestamp: new Date()
-        },
-      ]);
+// You can now ask me specific questions about this vehicle!`, 
+//           isUser: false,
+//           status: 'success',
+//           timestamp: new Date()
+//         },
+//       ]);
     } else {
       setMessages((prev) => [
         ...prev,
@@ -226,67 +226,99 @@ Please verify your Token ID or contact support.`,
     }
   };
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+const handleSend = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!query.trim()) return;
 
-    const userMsg = { 
-      id: generateId(), 
-      text: query, 
-      isUser: true, 
-      timestamp: new Date()
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setQuery('');
-    setLoading(true);
+  const userMsg = { id: generateId(), text: query, isUser: true, timestamp: new Date() };
+  setMessages((prev) => [...prev, userMsg]);
+  setQuery('');
+  setLoading(true);
 
-    let botReply = '';
-    let enhancedPrompt = '';
-
-    if (mode === 'new') {
-      // New car mode - keep existing logic
-      enhancedPrompt = `User is asking about a new car. Question: ${query}. Provide helpful information about new cars, features, variants, or general automotive advice.`;
-    } else if (activeCar) {
-      // Old car mode with database context - enhanced for short answers with tips
-      const carContext = `Vehicle Database Record:
-      - Token ID: ${tokenId.toUpperCase()}
-      - Model: ${activeCar.model}
-      - Owner: ${activeCar.owner}
-      - Year: ${activeCar.year}
-      - Mileage: ${activeCar.mileage}
-      - Insurance: ${activeCar.insurance}
-      
-      User Question: ${query}
-      
-      Respond as a car database assistant. Give a SHORT, direct answer (2-3 sentences max) based on the vehicle data above. Then add 1-2 practical suggestions or tips related to the query. Format your response professionally like a database query result.`;
-      
-      enhancedPrompt = carContext;
-    } else {
-      // Fallback for old car mode without active car
-      enhancedPrompt = `User is asking about old cars but no specific vehicle is selected. Question: ${query}. Provide brief, helpful information about used cars in general.`;
-    }
-
-    botReply = await callGeminiAPI(enhancedPrompt);
-
-    // Add suggestions/tips formatting for old car mode responses
+  try {
     if (mode === 'old' && activeCar) {
-      // Add database-style formatting and tips
-      botReply = botReply + `
+      // 1️⃣ Fetch service hashes using POST
+      const hashRes = await fetch("https://og-devahan-1.onrender.com/addService/display", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicleId: tokenId }),
+      });
 
-💡 **Suggestions**: 
-• Regular maintenance helps preserve vehicle value
-• Check insurance renewal dates to avoid lapses`;
+      const hashData = await hashRes.json();
+      console.log("Fetched service hashes:", hashData);
+      if (!hashData?.serviceHashes?.length) {
+        throw new Error("No service hashes found for this vehicle.");
+      }
+
+      // 2️⃣ For each hash, fetch JSON data from 0G
+      const recordPromises = hashData.serviceHashes.map(async (hash: string) => {
+        try {
+          const res = await fetch(`https://og-devahan-1.onrender.com/api/fetchJSON/${hash}`);
+          const json = await res.json();
+          if (json.success) return json.data;
+          console.warn("Failed to fetch record for hash:", hash);
+          return null;
+        } catch (error) {
+          console.error("Error fetching hash:", hash, error);
+          return null;
+        }
+      });
+
+      const recordResults = await Promise.all(recordPromises);
+      const recordData = recordResults.filter(Boolean); // remove nulls
+
+      if (!recordData.length) {
+        throw new Error("No valid service data found for the provided hashes.");
+      }
+      console.log(recordData)
+      // 3️⃣ Send all service records + query to 0G Compute
+      const aiRes = await fetch("https://og-devahan-1.onrender.com/api/ask0GCompute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenID: tokenId,
+          query,
+          serviceRecord: JSON.stringify(recordData, null, 2),
+        }),
+      });
+
+      const aiData = await aiRes.json();
+      const botReply = aiData.reply || "⚠️ No response from 0G Compute";
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          text: botReply,
+          isUser: false,
+          status: aiData.verified ? "success" : "info",
+          timestamp: new Date(),
+        },
+      ]);
+    } else {
+      // For new car mode
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          text: "✨ Ask anything about new cars here!",
+          isUser: false,
+          status: "info",
+          timestamp: new Date(),
+        },
+      ]);
     }
+  } catch (err: any) {
+    console.error("Error in handleSend:", err);
+    setMessages((prev) => [
+      ...prev,
+      { id: generateId(), text: `⚠️ Error: ${err.message}`, isUser: false, status: "error" },
+    ]);
+  }
 
-    setMessages((prev) => [...prev, { 
-      id: generateId(), 
-      text: botReply, 
-      isUser: false,
-      status: 'success',
-      timestamp: new Date()
-    }]);
-    setLoading(false);
-  };
+  setLoading(false);
+};
+
 
   const toggleChatbot = () => {
     setIsOpen(!isOpen);

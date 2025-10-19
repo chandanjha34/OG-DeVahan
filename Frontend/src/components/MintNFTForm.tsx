@@ -45,7 +45,7 @@ const MintNFTForm: React.FC<MintNFTFormProps> = ({ isOpen, onClose }) => {
     console.log(file);
     formData.append("file", file);
     console.log('hi')
-    const res = await fetch("http://localhost:3000/api/uploadFile", {
+    const res = await fetch("https://og-devahan-1.onrender.com/api/uploadFile", {
       method: "POST",
       body: formData,
     });
@@ -59,7 +59,7 @@ const MintNFTForm: React.FC<MintNFTFormProps> = ({ isOpen, onClose }) => {
 
   // ✅ Upload JSON metadata to backend -> 0G Storage
   const uploadMetadata = async (jsonData: any): Promise<string> => {
-    const res = await fetch("http://localhost:3000/api/uploadJSON", {
+    const res = await fetch("https://og-devahan-1.onrender.com/api/uploadJSON", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(jsonData),
@@ -116,7 +116,7 @@ const MintNFTForm: React.FC<MintNFTFormProps> = ({ isOpen, onClose }) => {
       const metadataRootHash = await uploadMetadata(metadata);
       console.log("✅ Metadata uploaded:", metadataRootHash);
 
-const ipfsResponse = await fetch('http://localhost:3000/api/IPFS', {
+const ipfsResponse = await fetch('https://og-devahan-1.onrender.com/api/IPFS', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',

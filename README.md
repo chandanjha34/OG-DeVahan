@@ -87,7 +87,7 @@ npm run dev
 yarn dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to access the platform.
+Open [https://og-devahan-1.onrender.com](https://og-devahan-1.onrender.com) in your browser to access the platform.
 
 ---
 
