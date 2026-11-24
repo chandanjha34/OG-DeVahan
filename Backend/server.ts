@@ -6,18 +6,19 @@ import fileUpload from "express-fileupload";
 import authRoutes from "./routes/authRoutes";
 import bodyParser from "body-parser";
 import connectDB from "./config/db";
-import { uploadFileBuffer, uploadJSON , fetchJSON} from "./utils/zeroGStorage";
+import {
+  uploadFileBuffer,
+  uploadJSON,
+  fetchJSON,
+} from "./utils/contentStorage";
+import addServicesRoutes from "./routes/addServicesRoutes";
 
 dotenv.config();
 
-// Connect to MongoDB
 connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Middleware
-
 
 const allowedOrigins = [
   "http://localhost:5173",
@@ -32,7 +33,7 @@ const allowedOrigins = [
   "https://devahan.build.half-red.net",
   "https://massa-de-vahan.vercel.app",
   "https://massa-de-vahan-chandan-jhas-projects.vercel.app",
-  "https://devahan.xyz"
+  "https://devahan.xyz",
 ];
 
 app.use(
@@ -52,183 +53,136 @@ app.use(
   })
 );
 
-// ✅ Use regex instead of "*" to fix "path-to-regexp" error
 app.options(/.*/, cors());
-
-
-// Optional but recommended: handle preflight requests globally
-
 
 app.use(express.json());
 app.use(fileUpload());
-
-import { ethers } from 'ethers';
-import { createZGComputeNetworkBroker } from '@0glabs/0g-serving-broker';
-import addServicesRoutes from "./routes/addServicesRoutes";
-
-
 app.use(bodyParser.json());
 
 /**
- * Initialize 0G Compute Broker
- * Choose network based on environment
+ * AI assistant via Gemini (replaces 0G Compute).
+ * Keep /api/ask0GCompute as an alias for older clients.
  */
-const RPC_URL =
-  process.env.NODE_ENV === 'production'
-    ? 'https://evmrpc.0g.ai' // Mainnet
-    : 'https://evmrpc-testnet.0g.ai'; // Testnet
-
-const provider = new ethers.JsonRpcProvider(RPC_URL);
-const wallet = new ethers.Wallet(process.env.PRIVATE_KEY as string, provider);
-
-let broker: any;
-
-(async () => {
-  broker = await createZGComputeNetworkBroker(wallet);
-  console.log(process.env.PRIVATE_KEY);
-  console.log(wallet.address);
-  console.log(wallet);
-  console.log(broker);
-  console.log("✅ 0G Compute Broker initialized");
-
-  // Check if account exists or needs funding
-  try {
-    const account = await broker.ledger.getLedger();
-    console.log(`💰 Existing account balance: ${ethers.formatEther(account.totalBalance)} OG`);
-  } catch {
-    console.log("⚙️ No account found. Creating and funding one...");
-    // This creates + funds the account automatically
-    await broker.ledger.addLedger(4.4);
-    console.log("✅ Account created & funded with 10 OG tokens");
-  }
-})();
-
-/* ----------------------------- API ROUTE ----------------------------- */
-app.post("/api/ask0GCompute", async (req, res) => {
+async function askVehicleAI(req: express.Request, res: express.Response) {
   try {
     const { tokenID, query, serviceRecord } = req.body;
     if (!tokenID || !query || !serviceRecord) {
       return res.status(400).json({ error: "Missing parameters" });
     }
 
-    // Step 1: Discover available AI services
-    const services = await broker.inference.listService();
-    const selectedService =
-      services.find((s: any) => s.model === "deepseek-r1-70b") || services[0];
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res
+        .status(500)
+        .json({ error: "Server missing GEMINI_API_KEY" });
+    }
 
-    if (!selectedService) throw new Error("No available 0G Compute services.");
+    const prompt = `You are a helpful car service assistant. Use the given vehicle service record to answer queries and provide recommendations. Always answer in less than 4 lines.
 
-    const providerAddress = selectedService.provider;
+Vehicle TokenID: ${tokenID}
 
-    // Step 2: Acknowledge provider (required)
-    await broker.inference.acknowledgeProviderSigner(providerAddress);
-    console.log(`✅ Acknowledged provider: ${providerAddress}`);
+Service Record:
+${serviceRecord}
 
-    // Step 3: Get service metadata
-    const { endpoint, model } = await broker.inference.getServiceMetadata(providerAddress);
+Question: ${query}`;
 
-    // Step 4: Prepare messages
-    const messages = [
+    const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
-        role: "system",
-        content:
-          "You are a helpful car service assistant. Use the given vehicle service record to answer queries and provide recommendations. And give answers always in less than 4 lines",
-      },
-      {
-        role: "user",
-        content: `Vehicle TokenID: ${tokenID}\n\nService Record:\n${serviceRecord}\n\nQuestion: ${query}`,
-      },
-    ];
-
-    // Step 5: Generate single-use auth headers
-    const headers = await broker.inference.getRequestHeaders(
-      providerAddress,
-      JSON.stringify(messages)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
     );
 
-    // Step 6: Send request to 0G model
-    const response = await fetch(`${endpoint}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({
-        messages,
-        model,
-      }),
-    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API error: ${response.status} ${errText}`);
+    }
 
     const data = await response.json();
-    const answer = data?.choices?.[0]?.message?.content || "⚠️ No valid response.";
-    const chatID = data?.id;
-
-    // Step 7: Verify response if TEE verified
-    const isValid = await broker.inference.processResponse(providerAddress, answer, chatID);
+    const answer =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "⚠️ No valid response.";
 
     return res.json({
       reply: answer,
-      verified: isValid,
-      provider: providerAddress,
+      verified: true,
+      provider: "gemini",
       model,
     });
   } catch (error: any) {
-    console.error("❌ 0G Compute error:", error);
+    console.error("❌ AI assistant error:", error);
     return res.status(500).json({ error: error.message });
   }
-});
+}
 
-// Auth routes
+app.post("/api/askAI", askVehicleAI);
+app.post("/api/ask0GCompute", askVehicleAI); // backward-compatible alias
+
 app.use("/auth", authRoutes);
 app.use("/addService", addServicesRoutes);
 
 // ---------------------------
-// 0G Storage routes
+// Content storage routes (SHA-256 blobs; replaces 0G Storage)
 // ---------------------------
 
-
-
-// Upload a single file
 app.post("/api/uploadFile", async (req, res) => {
   try {
-    console.log('checkpoint 1')
     if (!req.files || !req.files.file) {
       return res.status(400).json({ success: false, error: "No file uploaded" });
     }
 
-    const file = req.files.file as any; // express-fileupload File object
+    const file = req.files.file as any;
     if (!file.data || !file.name) {
-      return res.status(400).json({ success: false, error: "Invalid file object" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid file object" });
     }
 
-    // Upload buffer to 0G
     const result = await uploadFileBuffer(file.data, file.name);
-    return res.json({ success: true, rootHash: result.rootHash, txHash: result.txHash });
+    return res.json({
+      success: true,
+      rootHash: result.rootHash,
+      txHash: result.txHash,
+    });
   } catch (error: any) {
     console.error("UploadFile error:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Upload JSON data
 app.post("/api/uploadJSON", async (req, res) => {
   try {
     const jsonData = req.body;
     if (!jsonData || Object.keys(jsonData).length === 0) {
-      return res.status(400).json({ success: false, error: "No JSON data provided" });
+      return res
+        .status(400)
+        .json({ success: false, error: "No JSON data provided" });
     }
 
     const result = await uploadJSON(jsonData);
-    return res.json({ success: true, rootHash: result.rootHash, txHash: result.txHash });
+    return res.json({
+      success: true,
+      rootHash: result.rootHash,
+      txHash: result.txHash,
+    });
   } catch (error: any) {
     console.error("UploadJSON error:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Fetch JSON from 0G Storage
 app.get("/api/fetchJSON/:rootHash", async (req, res) => {
   try {
     const { rootHash } = req.params;
-      console.log("Fetching JSON for rootHash:", rootHash);
-    if (!rootHash) return res.status(400).json({ success: false, error: "rootHash is required" });
+    if (!rootHash)
+      return res
+        .status(400)
+        .json({ success: false, error: "rootHash is required" });
     const data = await fetchJSON(rootHash);
     return res.json({ success: true, data });
   } catch (error: any) {
@@ -237,69 +191,55 @@ app.get("/api/fetchJSON/:rootHash", async (req, res) => {
   }
 });
 
-app.post("/api/IPFS",async(req,res )=>{
-    try {
-    // 1. Extract metadata from the request
-    const { name, description, image } = await req.body;
+app.post("/api/IPFS", async (req, res) => {
+  try {
+    const { name, description, image } = req.body;
 
-    // 2. Validate input
     if (!name || !description || !image) {
-      return res.json(
-        { success: false, error: 'Missing required metadata fields.' }
-      );
+      return res.json({
+        success: false,
+        error: "Missing required metadata fields.",
+      });
     }
 
-    // 3. Get Pinata JWT
-    const pinataJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJhNjlmMTJmOS1kOTQ0LTRjY2ItOTkzNS1lYThiMWY5MmU1NjYiLCJlbWFpbCI6ImpoYTk1Mzc1QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiJmODE4NTIyODI0ZDM5YzEwNTYwNyIsInNjb3BlZEtleVNlY3JldCI6IjAwNmQ2NDNkMTZlMDk4MDMzNGRlNmZmYWVlOWNiZGIzMGM2YzlmMTliMzY3YmRlNTk0OWRjNjQyZjU4NDE2NTYiLCJleHAiOjE3ODU3NTE5Mjl9.BqPPy4gmTqOSc82H2vJxHE9yjg6Y8q7f-SVoGoHeIFQ";
+    const pinataJwt = process.env.PINATA_JWT;
     if (!pinataJwt) {
       console.error("Missing PINATA_JWT environment variable");
-      return res.json(
-        { success: false, error: 'Server configuration error.' },
-      );
+      return res.json({
+        success: false,
+        error: "Server configuration error.",
+      });
     }
 
-    // 4. Prepare the JSON metadata
-    const metadata = {
-      name,
-      description,
-      image, // should already be a Cloudinary or IPFS gateway URL
-    };
+    const metadata = { name, description, image };
 
-    // 5. Upload metadata to public IPFS using pinJSONToIPFS
-    const pinataResponse = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJhNjlmMTJmOS1kOTQ0LTRjY2ItOTkzNS1lYThiMWY5MmU1NjYiLCJlbWFpbCI6ImpoYTk1Mzc1QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiJmODE4NTIyODI0ZDM5YzEwNTYwNyIsInNjb3BlZEtleVNlY3JldCI6IjAwNmQ2NDNkMTZlMDk4MDMzNGRlNmZmYWVlOWNiZGIzMGM2YzlmMTliMzY3YmRlNTk0OWRjNjQyZjU4NDE2NTYiLCJleHAiOjE3ODU3NTE5Mjl9.BqPPy4gmTqOSc82H2vJxHE9yjg6Y8q7f-SVoGoHeIFQ`,
-  },
-  body: JSON.stringify(metadata),
+    const pinataResponse = await fetch(
+      "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${pinataJwt}`,
+        },
+        body: JSON.stringify(metadata),
+      }
+    );
+
+    if (!pinataResponse.ok) {
+      throw new Error(`Pinata upload failed: ${pinataResponse.statusText}`);
+    }
+
+    const data = await pinataResponse.json();
+    const tokenUri = `ipfs://${data.IpfsHash}`;
+    return res.json({ success: true, tokenUri });
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.json({ error: error.message });
+    }
+    return res.json({ error: "Unknown error" });
+  }
 });
 
-if (!pinataResponse.ok) {
-  throw new Error(`Pinata upload failed: ${pinataResponse.statusText}`);
-}
-
-const data = await pinataResponse.json();
-console.log("Pinata response:", data);
-
-
-    // 6. Get IPFS hash and build tokenURI
-    const ipfsHash = data.IpfsHash;
-    const tokenUri = `ipfs://${ipfsHash}`;
-console.log(tokenUri);
-    // 7. Return success response
-    return res.json({ success: true, tokenUri });
-
-  }  catch (error) {
-        if (error instanceof Error) {
-    return res.json({ error: error.message });
-  }
-  return res.json({ error: 'Unknown error' });
-    }
-
-})
-
-// Start server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

@@ -4,10 +4,10 @@ import { NFTContext } from '../contracts/DeVahanContext';
 import { useDispatch, useSelector } from 'react-redux';
 import { assignAddress } from '../Redux/features/wallet';
 import { RootState, AppDispatch } from '../Redux/store';
-import { metamaskConnect } from '../contracts/walletConnect';
 import { assignEmail } from '../Redux/features/emails';
 import { assignUser } from '../Redux/features/users';
 import { loginSuccess } from '../Redux/features/auth';
+import { API_BASE } from '../utils/api';
 
 interface AuthenticationModalProps {
   isOpen: boolean;
@@ -38,12 +38,13 @@ function AuthenticationModal({
 
   const connect = async () => {
     try {
-      const wallet = await metamaskConnect();
-      if (wallet && typeof wallet === 'string') {
+      const wallet = await nftcontext.connectWallet();
+      if (wallet) {
         dispatch(assignAddress(wallet));
       }
     } catch (err) {
       console.error('Wallet connection failed:', err);
+      alert('Please connect MetaMask on Sepolia to continue.');
     }
   };
 
@@ -63,7 +64,7 @@ function AuthenticationModal({
     }
 
     try {
-      const baseUrl = 'https://og-devahan-2.onrender.com/auth';
+      const baseUrl = `${API_BASE}/auth`;
       const endpoint = `${baseUrl}/${role === 'user' ? 'customer' : role}/${
         isSignIn ? 'login' : 'signup'
       }`;

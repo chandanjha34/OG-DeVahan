@@ -16,6 +16,7 @@ import {
   Database,
   Lightbulb
 } from 'lucide-react';
+import { API_BASE } from '../utils/api';
 
 // Dummy DB for old cars - Updated with TOKEN_00x format
 const demoCars: Record<string, { model: string; insurance: string; owner: string; year: string; mileage: string; }> = {
@@ -238,7 +239,7 @@ const handleSend = async (e: React.FormEvent) => {
   try {
     if (mode === 'old' && activeCar) {
       // 1️⃣ Fetch service hashes using POST
-      const hashRes = await fetch("https://og-devahan-2.onrender.com/addService/display", {
+      const hashRes = await fetch(`${API_BASE}/addService/display`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vehicleId: tokenId }),
@@ -250,10 +251,10 @@ const handleSend = async (e: React.FormEvent) => {
         throw new Error("No service hashes found for this vehicle.");
       }
 
-      // 2️⃣ For each hash, fetch JSON data from 0G
+      // 2️⃣ For each hash, fetch JSON from content storage
       const recordPromises = hashData.serviceHashes.map(async (hash: string) => {
         try {
-          const res = await fetch(`https://og-devahan-2.onrender.com/api/fetchJSON/${hash}`);
+          const res = await fetch(`${API_BASE}/api/fetchJSON/${hash}`);
           const json = await res.json();
           if (json.success) return json.data;
           console.warn("Failed to fetch record for hash:", hash);
@@ -265,14 +266,14 @@ const handleSend = async (e: React.FormEvent) => {
       });
 
       const recordResults = await Promise.all(recordPromises);
-      const recordData = recordResults.filter(Boolean); // remove nulls
+      const recordData = recordResults.filter(Boolean);
 
       if (!recordData.length) {
         throw new Error("No valid service data found for the provided hashes.");
       }
       console.log(recordData)
-      // 3️⃣ Send all service records + query to 0G Compute
-      const aiRes = await fetch("https://og-devahan-2.onrender.com/api/ask0GCompute", {
+      // 3️⃣ Send service records + query to AI assistant
+      const aiRes = await fetch(`${API_BASE}/api/askAI`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -283,7 +284,7 @@ const handleSend = async (e: React.FormEvent) => {
       });
 
       const aiData = await aiRes.json();
-      const botReply = aiData.reply || "⚠️ No response from 0G Compute";
+      const botReply = aiData.reply || "⚠️ No response from AI assistant";
 
       setMessages((prev) => [
         ...prev,

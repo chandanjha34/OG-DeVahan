@@ -1,6 +1,7 @@
 import React, { useState, useContext } from "react";
 import { X } from "lucide-react";
 import { NFTContext } from "../contracts/DeVahanContext";
+import { API_BASE } from "../utils/api";
 
 interface MintNFTFormProps {
   isOpen: boolean;
@@ -39,13 +40,11 @@ const MintNFTForm: React.FC<MintNFTFormProps> = ({ isOpen, onClose }) => {
     if (e.target.files && e.target.files[0]) setImageFile(e.target.files[0]);
   };
 
-  // ✅ Upload file to backend -> 0G Storage
+  // Upload file to backend content storage
   const uploadImage = async (file: File): Promise<string> => {
     const formData = new FormData();
-    console.log(file);
     formData.append("file", file);
-    console.log('hi')
-    const res = await fetch("https://og-devahan-2.onrender.com/api/uploadFile", {
+    const res = await fetch(`${API_BASE}/api/uploadFile`, {
       method: "POST",
       body: formData,
     });
@@ -53,13 +52,12 @@ const MintNFTForm: React.FC<MintNFTFormProps> = ({ isOpen, onClose }) => {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || "Image upload failed");
 
-    // Return the rootHash (0G Storage hash)
     return data.rootHash;
   };
 
-  // ✅ Upload JSON metadata to backend -> 0G Storage
+  // Upload JSON metadata to backend content storage
   const uploadMetadata = async (jsonData: any): Promise<string> => {
-    const res = await fetch("https://og-devahan-2.onrender.com/api/uploadJSON", {
+    const res = await fetch(`${API_BASE}/api/uploadJSON`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(jsonData),
@@ -86,9 +84,8 @@ const MintNFTForm: React.FC<MintNFTFormProps> = ({ isOpen, onClose }) => {
     try {
       setFormState("loading");
     console.log('checkpoint 2')
-      // 1️⃣ Upload image to 0G
+      // 1️⃣ Upload image to content storage
       const imageRootHash = await uploadImage(imageFile);
-          console.log('checkpoint 3')
       console.log("✅ Image uploaded:", imageRootHash);
 
       const res1 = await fetch(`https://api.cloudinary.com/v1_1/dbvezos5j/image/upload`,{
@@ -112,11 +109,11 @@ const MintNFTForm: React.FC<MintNFTFormProps> = ({ isOpen, onClose }) => {
         createdAt: new Date().toISOString(),
       };
     console.log('checkpoint 4')
-      // 3️⃣ Upload metadata JSON to 0G
+      // 3️⃣ Upload metadata JSON
       const metadataRootHash = await uploadMetadata(metadata);
       console.log("✅ Metadata uploaded:", metadataRootHash);
 
-const ipfsResponse = await fetch('https://og-devahan-2.onrender.com/api/IPFS', {
+const ipfsResponse = await fetch(`${API_BASE}/api/IPFS`, {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -212,7 +209,7 @@ console.log("Received Token URI from backend:", uri);
 
         {formState === "loading" && (
           <div className="text-center text-white animate-pulse">
-            Uploading to 0G & minting NFT... please wait.
+            Uploading metadata & minting NFT on Sepolia... please wait.
           </div>
         )}
         {formState === "success" && (

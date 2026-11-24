@@ -1,26 +1,8 @@
 # 🚗 DeVahan – Decentralized Vehicle Intelligence Network
 
-A decentralized ecosystem for **vehicle identity, data integrity, and AI-powered lifecycle management**, built on **0G’s decentralized compute, DA and storage infrastructure**.
+A decentralized ecosystem for **vehicle identity, data integrity, and AI-powered lifecycle management**, running on **Ethereum Sepolia**.
 
-**Status:** Production Ready ✅ | **Version:** 1.0
-
----
-
-## 📋 Table of Contents
-
-1. Quick Start
-2. Architecture Overview
-3. Features
-4. API Documentation
-5. Project Structure
-6. Setup Instructions
-7. How to Use
-8. AI Model Training
-9. 0G Integration
-10. Troubleshooting
-11. Future Roadmap
-12. Contributing
-13. License
+**Status:** Production Ready ✅ | **Version:** 1.1 (Sepolia)
 
 ---
 
@@ -30,98 +12,104 @@ A decentralized ecosystem for **vehicle identity, data integrity, and AI-powered
 
 * Node.js v20+
 * npm v10+
-* 0G Wallet with OG tokens
-* IPFS or 0G Storage access key
+* MetaMask with Sepolia ETH
+* MongoDB URI, Gemini API key, Pinata JWT (for NFT metadata URI)
 
 ### 2️⃣ Installation
 
 ```bash
-https://github.com/chandanjha34/OG-DeVahan.git
+git clone https://github.com/chandanjha34/OG-DeVahan.git
 cd OG-DeVahan
 
-cd Backend
-npm install
-
-cd Frontend
-npm install
-
-cd Contract
-npm install
-
-
+cd Backend && npm install && cd ..
+cd Frontend && npm install && cd ..
+cd Contract && npm install && cd ..
 ```
 
 ### 3️⃣ Environment Setup
 
-Create a `.env` file:
-
-# Backend Folder
-
-PORT=3000
-RPC_URL=https://evmrpc-testnet.0g.ai/
-INDEXER_RPC=https://indexer-storage-turbo.0g.ai
-MONGO_URI=mongodb+srv://your_MongoDB_URI
-JWT_SECRET = JWT_secret
-PRIVATE_KEY = Your_Private_Key
-NODE_ENV=development
-
-
-# Contract Folder
-
-PRIVATE_KEY = Your_Private_Key
+**Backend** (`Backend/.env`):
 
 ```
+PORT=3000
+MONGO_URI=mongodb+srv://your_MongoDB_URI
+JWT_SECRET=JWT_secret
+GEMINI_API_KEY=your_gemini_api_key
+PINATA_JWT=your_pinata_jwt
+NODE_ENV=development
+```
 
-### 4️⃣ Start the App
+**Contract** (`Contract/.env`):
+
+```
+PRIVATE_KEY=your_deployer_private_key
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+ETHERSCAN_API_KEY=optional
+```
+
+**Frontend** (`Frontend/.env`):
+
+```
+VITE_API_URL=http://localhost:3000
+VITE_CONTRACT_ADDRESS=0xYourSepoliaDeployment
+VITE_SEPOLIA_RPC_URL=https://rpc.sepolia.org
+```
+
+### 4️⃣ Deploy NFT contract to Sepolia
 
 ```bash
+cd Contract
+npx hardhat ignition deploy ./ignition/modules/Lock.ts --network sepolia
+```
 
-cd Backend
-npm run dev
+Copy the deployed `SimpleVehicleNFT` address into `Frontend/.env` as `VITE_CONTRACT_ADDRESS`.
 
-cd Frontend
-npm run dev
+### 5️⃣ Start the App
 
-
+```bash
+cd Backend && npm run dev
+cd Frontend && npm run dev
 ```
 
 ---
 
-## 🏗️ Architecture Overview
-
-### System Diagram
+## 🏗️ Architecture
 
 ```
-Client (React + Vite)
+Client (React + Vite + MetaMask / Sepolia)
    │
    ▼
 Backend (Express + Node.js)
    │
-   ├── Vehicle APIs (identity, history, diagnostics)
-   ├── 0G Storage (vehicle records)
-   ├── 0G Compute (AI diagnostics)
-   └── 0G Ledger (on-chain metadata)
+   ├── Vehicle APIs (identity, history, auth)
+   ├── Content storage (SHA-256 blobs on disk)
+   ├── Gemini AI (service Q&A)
+   └── Pinata IPFS (ERC-721 tokenURI)
+   │
+   ▼
+Ethereum Sepolia (SimpleVehicleNFT)
 ```
 
 ### Data Flow
 
-1. Starts with Dealer, dealer mints NFT with all the vehicle details into the buyer's wallet by uploading metadata on 0G storage
-2. Service centers will upload service records by binding it with vehicle id(making hash of service record's json and then upload same on 0g and then hash on backend)
-3. Then owners can see their vehicles and service records ledger from their dashboard.
-4. They can also check resale value of their vehicles
-5. Then owners can enquire about someone's vehicle just by typing its vehicle id in VahanSarthi.
+1. Dealer mints an NFT with vehicle details into the buyer’s wallet (metadata blob + IPFS tokenURI, mint on Sepolia).
+2. Service centers upload service records (JSON blob hash stored in MongoDB).
+3. Owners can view vehicles and service history.
+4. Resale estimator and VahanSaarthi AI assistant use stored records + Gemini.
+
 ---
 
 ## 🧩 Technology Stack
 
-| Layer      | Technology         | Purpose                            |
-| ---------- | ------------------ | ---------------------------------- |
-| Frontend   | React + Tailwind   | UI/UX for vehicle dashboard        |
-| Backend    | Node.js + Express  | REST APIs                          |
-| Blockchain | 0G Mainnet, EVM    | On-chain storage and compute       |
-| AI         | 0G Compute Network | Decentralized inference & training |
-| Storage    | 0G Storage         | Vehicle records & verification     |
-| DB         | MongoDB            | Off-chain cache and indexing       |
+| Layer      | Technology              | Purpose                      |
+| ---------- | ----------------------- | ---------------------------- |
+| Frontend   | React + Tailwind        | Vehicle dashboard UI         |
+| Backend    | Node.js + Express       | REST APIs                    |
+| Blockchain | Ethereum Sepolia        | Vehicle NFT ownership        |
+| AI         | Google Gemini           | Service Q&A / diagnostics    |
+| Storage    | Local content-addressed | Vehicle / service JSON blobs |
+| Metadata   | Pinata IPFS             | ERC-721 tokenURI             |
+| DB         | MongoDB                 | Auth + service hash index    |
 
 ---
 
@@ -129,21 +117,15 @@ Backend (Express + Node.js)
 
 ### ✅ Core (Implemented)
 
-* Vehicle NFT minting
-* Service record storage via 0G
-* AI-based maintenance predictions
+* Vehicle NFT minting on Sepolia
+* Service record storage (content-addressed + MongoDB)
+* AI-based maintenance Q&A (Gemini)
 * Dealer & service provider registration
-* Data verification via Merkle proofs
 * Basic dashboard for vehicle health
 
-### 🔮 Upcoming (Q1 2026)
+### 🔮 Upcoming
 
-* Smart INFTs (intelligent evolving NFTs)
+* Smart INFTs
 * Predictive repair scheduling
 * Vehicle resale verification
-* Cross-chain interoperability
 * Insurance & finance modules
-
----
-
-

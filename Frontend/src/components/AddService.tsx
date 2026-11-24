@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { API_BASE } from "../utils/api";
 
 function AddService() {
   const [form, setForm] = useState({
@@ -20,8 +21,8 @@ function AddService() {
     e.preventDefault();
 
     try {
-      // Step 1: Upload JSON to 0G (mock API)
-      const uploadRes = await fetch("https://og-devahan-2.onrender.com/api/uploadJSON", {
+      // Step 1: Upload JSON to content storage
+      const uploadRes = await fetch(`${API_BASE}/api/uploadJSON`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -29,7 +30,7 @@ function AddService() {
       const data = await uploadRes.json();
       const hash = data.rootHash;
       // Step 2: Save hash to MongoDB
-      await fetch("https://og-devahan-2.onrender.com/addService", {
+      await fetch(`${API_BASE}/addService`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vehicleId: form.vehicleId, serviceHash: hash }),
