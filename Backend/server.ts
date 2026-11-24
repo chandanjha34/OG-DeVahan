@@ -202,12 +202,28 @@ app.post("/api/IPFS", async (req, res) => {
       });
     }
 
-    const pinataJwt = process.env.PINATA_JWT;
-    if (!pinataJwt) {
-      console.error("Missing PINATA_JWT environment variable");
+    const pinataJwt = process.env.PINATA_JWT?.trim();
+    const pinataApiKey = process.env.PINATA_API_KEY?.trim();
+    const pinataApiSecret = process.env.PINATA_API_SECRET?.trim();
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    // Prefer JWT (starts with eyJ…). API key alone is not a JWT and will 403.
+    if (pinataJwt && pinataJwt.startsWith("eyJ")) {
+      headers.Authorization = `Bearer ${pinataJwt}`;
+    } else if (pinataApiKey && pinataApiSecret) {
+      headers.pinata_api_key = pinataApiKey;
+      headers.pinata_secret_api_key = pinataApiSecret;
+    } else {
+      console.error(
+        "Pinata auth missing/invalid. Set PINATA_JWT (full JWT) or PINATA_API_KEY + PINATA_API_SECRET"
+      );
       return res.json({
         success: false,
-        error: "Server configuration error.",
+        error:
+          "Server Pinata config invalid. Use a full JWT (eyJ…) or API key + secret.",
       });
     }
 
@@ -217,16 +233,16 @@ app.post("/api/IPFS", async (req, res) => {
       "https://api.pinata.cloud/pinning/pinJSONToIPFS",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${pinataJwt}`,
-        },
+        headers,
         body: JSON.stringify(metadata),
       }
     );
 
     if (!pinataResponse.ok) {
-      throw new Error(`Pinata upload failed: ${pinataResponse.statusText}`);
+      const errBody = await pinataResponse.text();
+      throw new Error(
+        `Pinata upload failed: ${pinataResponse.status} ${pinataResponse.statusText} ${errBody}`
+      );
     }
 
     const data = await pinataResponse.json();
