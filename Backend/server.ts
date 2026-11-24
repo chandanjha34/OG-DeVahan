@@ -191,6 +191,12 @@ app.get("/api/fetchJSON/:rootHash", async (req, res) => {
   }
 });
 
+/**
+ * Build ERC-721 tokenURI.
+ * Pinata public gateways are Cloudflare-challenged / rate-limited, so MetaMask
+ * often cannot fetch metadata → blank NFT image even when Cloudinary works.
+ * Use an on-chain data: URI (HTTPS Cloudinary image inside JSON) instead.
+ */
 app.post("/api/IPFS", async (req, res) => {
   try {
     const { name, description, image } = req.body;
@@ -202,65 +208,68 @@ app.post("/api/IPFS", async (req, res) => {
       });
     }
 
-    const pinataJwt = process.env.PINATA_JWT?.trim();
-    const pinataApiKey = process.env.PINATA_API_KEY?.trim();
-    const pinataApiSecret = process.env.PINATA_API_SECRET?.trim();
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    // Prefer JWT (starts with eyJ…). API key alone is not a JWT and will 403.
-    if (pinataJwt && pinataJwt.startsWith("eyJ")) {
-      headers.Authorization = `Bearer ${pinataJwt}`;
-    } else if (pinataApiKey && pinataApiSecret) {
-      headers.pinata_api_key = pinataApiKey;
-      headers.pinata_secret_api_key = pinataApiSecret;
-    } else {
-      console.error(
-        "Pinata auth missing/invalid. Set PINATA_JWT (full JWT) or PINATA_API_KEY + PINATA_API_SECRET"
-      );
-      return res.json({
-        success: false,
-        error:
-          "Server Pinata config invalid. Use a full JWT (eyJ…) or API key + secret.",
-      });
-    }
-
-    // OpenSea / MetaMask-friendly metadata shape
     const metadata = {
       name,
       description,
-      image, // must be a public https URL (e.g. Cloudinary)
+      image, // public https (Cloudinary)
       external_url: image,
     };
 
-    const pinataResponse = await fetch(
-      "https://api.pinata.cloud/pinning/pinJSONToIPFS",
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify(metadata),
-      }
-    );
-
-    if (!pinataResponse.ok) {
-      const errBody = await pinataResponse.text();
-      throw new Error(
-        `Pinata upload failed: ${pinataResponse.status} ${pinataResponse.statusText} ${errBody}`
+    // Persist a copy for app features (ephemeral on Render disk; ok as backup)
+    let metadataHash: string | undefined;
+    try {
+      const stored = await uploadJSON(
+        metadata,
+        `nft-metadata-${Date.now()}.json`
       );
+      metadataHash = stored.rootHash;
+    } catch (storeErr) {
+      console.warn("Local metadata store failed:", storeErr);
     }
 
-    const data = await pinataResponse.json();
-    // HTTPS gateway URI — MetaMask resolves this far more reliably than ipfs://
-    const gateway =
-      process.env.PINATA_GATEWAY?.replace(/\/$/, "") ||
-      "https://gateway.pinata.cloud/ipfs";
-    const tokenUri = `${gateway}/${data.IpfsHash}`;
+    // Optional Pinata archival (not used for tokenURI)
+    let ipfsUri: string | undefined;
+    try {
+      const pinataJwt = process.env.PINATA_JWT?.trim();
+      const pinataApiKey = process.env.PINATA_API_KEY?.trim();
+      const pinataApiSecret = process.env.PINATA_API_SECRET?.trim();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (pinataJwt?.startsWith("eyJ")) {
+        headers.Authorization = `Bearer ${pinataJwt}`;
+      } else if (pinataApiKey && pinataApiSecret) {
+        headers.pinata_api_key = pinataApiKey;
+        headers.pinata_secret_api_key = pinataApiSecret;
+      }
+      if (headers.Authorization || headers.pinata_api_key) {
+        const pinataResponse = await fetch(
+          "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify(metadata),
+          }
+        );
+        if (pinataResponse.ok) {
+          const data = await pinataResponse.json();
+          ipfsUri = `ipfs://${data.IpfsHash}`;
+        }
+      }
+    } catch (pinataErr) {
+      console.warn("Optional Pinata pin failed:", pinataErr);
+    }
+
+    const tokenUri = `data:application/json;base64,${Buffer.from(
+      JSON.stringify(metadata)
+    ).toString("base64")}`;
+
     return res.json({
       success: true,
       tokenUri,
-      ipfsUri: `ipfs://${data.IpfsHash}`,
+      ipfsUri,
+      metadataHash,
+      provider: "data-uri",
     });
   } catch (error) {
     if (error instanceof Error) {
