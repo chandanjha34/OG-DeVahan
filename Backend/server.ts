@@ -227,7 +227,13 @@ app.post("/api/IPFS", async (req, res) => {
       });
     }
 
-    const metadata = { name, description, image };
+    // OpenSea / MetaMask-friendly metadata shape
+    const metadata = {
+      name,
+      description,
+      image, // must be a public https URL (e.g. Cloudinary)
+      external_url: image,
+    };
 
     const pinataResponse = await fetch(
       "https://api.pinata.cloud/pinning/pinJSONToIPFS",
@@ -246,13 +252,21 @@ app.post("/api/IPFS", async (req, res) => {
     }
 
     const data = await pinataResponse.json();
-    const tokenUri = `ipfs://${data.IpfsHash}`;
-    return res.json({ success: true, tokenUri });
+    // HTTPS gateway URI — MetaMask resolves this far more reliably than ipfs://
+    const gateway =
+      process.env.PINATA_GATEWAY?.replace(/\/$/, "") ||
+      "https://gateway.pinata.cloud/ipfs";
+    const tokenUri = `${gateway}/${data.IpfsHash}`;
+    return res.json({
+      success: true,
+      tokenUri,
+      ipfsUri: `ipfs://${data.IpfsHash}`,
+    });
   } catch (error) {
     if (error instanceof Error) {
-      return res.json({ error: error.message });
+      return res.json({ success: false, error: error.message });
     }
-    return res.json({ error: "Unknown error" });
+    return res.json({ success: false, error: "Unknown error" });
   }
 });
 
